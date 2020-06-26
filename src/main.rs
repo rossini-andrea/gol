@@ -6,9 +6,7 @@ use std::thread as thread;
 use std::time::Duration;
 use gol_builder::GoLBuilder;
 use gol_builder::BuildGol;
-use pancurses;
 use pancurses::Window;
-use pancurses::chtype;
 
 /// Defines a wrapper to multiple calls to pancurses' `addch`.
 trait WideWrapper {
@@ -33,7 +31,7 @@ impl WideWrapper for Window {
         }
     }
 #[cfg(windows)]
-    fn addch_wide(&mut self, ch: char) {
+    fn addch_wide(&self, ch: char) {
         self.addch(ch);
     }
 }
@@ -42,20 +40,39 @@ impl WideWrapper for Window {
 struct MatGol {
     pub rows: usize,
     pub cols: usize,
-    pub matrix: Vec<Vec<u8>>
+    pub matrix: Vec<u8>
 }
 
 impl MatGol {
     /// Gets the cell at `(row, col)` and pads borders with 0s.
-    fn at(&self, row: i64, col: i64) -> u8 {
+    fn at(&self, row: i32, col: i32) -> u8 {
         if
             row < 0 ||
             col < 0 ||
-            row >= self.matrix.len() as i64 ||
-            col >= self.matrix[row as usize].len() as i64 {
+            row >= self.rows as i32 ||
+            col >= self.cols as i32 {
             return 0
         }
-        self.matrix[row as usize][col as usize]
+
+        self.matrix[row as usize * self.cols + col as usize]
+    }
+
+    /// Gets the cell at `(row, col)` without checks.
+    fn at_unchecked(&self, row: usize, col: usize) -> u8 {
+        self.matrix[row * self.cols + col]
+    }
+
+    /// Gets a mutable reference to the cell at `(row, col)`.
+    fn at_mut(&mut self, row: usize, col: usize) -> &mut u8 {
+/*        if
+            row < 0 ||
+            col < 0 ||
+            row >= self.rows ||
+            col >= self.cols {
+            return 0
+        }
+*/
+        &mut self.matrix[row * self.cols + col]
     }
 
     /// Renders this matrix on a curses `Window`.
@@ -63,13 +80,16 @@ impl MatGol {
         let charmap: [char; 4] = [' ', '▀', '▄', '█'];
 
         for ((r1, r2), y) in
-            self.matrix.iter().step_by(2)
-            .zip(self.matrix.iter().skip(1).step_by(2))
+            (0..self.rows).step_by(2)
+            .zip((1..self.rows).step_by(2))
             .zip(0..) {
             w.mv(y, 0);
 
-            for (cell1, cell2) in r1.iter().zip(r2.iter()) {
-                w.addch_wide(charmap[(cell1 + cell2 * 2) as usize]);
+            for c in 0..self.cols {
+                w.addch_wide(charmap[
+                    (self.at_unchecked(r1, c) +
+                    self.at_unchecked(r2, c) * 2) as usize
+                ]);
             }
         }
     }
@@ -80,30 +100,31 @@ impl GoLBuilder for MatGol {
         Self {
             rows,
             cols,
-            matrix: vec![vec![0; cols]; rows]
+            matrix: vec![0; cols * rows]
         }
     }
+
     fn live(mut self, row: usize, col: usize) -> Self {
-        self.matrix[row][col] = 1;
+        *self.at_mut(row, col) = 1;
         self
     }
+
     fn dead(mut self, row: usize, col: usize) -> Self {
-        self.matrix[row][col] = 0;
+        *self.at_mut(row, col) = 0;
         self
     }
 }
 
 impl Display for MatGol {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-        for row in &self.matrix {
-            for col in row {
-                if *col == 1u8 {
-                    write!(f, "♦.")?;
-                } else {
-                    write!(f, "..")?;
-                }
+        for (row, col) in (0..self.rows).zip(0..self.cols) {
+            if self.at_unchecked(row, col) == 1u8 {
+                write!(f, "♦.")?;
+            } else {
+                write!(f, "..")?;
             }
-            writeln!(f, "")?;
+
+            writeln!(f)?;
         }
 
         Ok(())
@@ -126,7 +147,8 @@ fn next(gol: MatGol) -> MatGol {
             for conv_row in 0..3 {
                 for conv_col in 0..3 {
                     convolution += filter[conv_row][conv_col] * gol.at(
-                        row as i64 + conv_row as i64 - 1, col as i64 + conv_col as i64 - 1
+                        row as i32 + conv_row as i32 - 1,
+                        col as i32 + conv_col as i32 - 1
                     );
                 }
             }
