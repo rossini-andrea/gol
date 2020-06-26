@@ -136,9 +136,10 @@ impl Display for MatGol {
 fn next(gol: MatGol) -> MatGol {
     let mut result = MatGol::empty(gol.rows, gol.cols);
     let filter = [
-        [1,1,1],
-        [1,10,1],
-        [1,1,1]];
+        1,  1, 1,
+        1, 10, 1,
+        1,  1, 1
+    ];
 
     for row in 0..gol.rows {
         for col in 0..gol.cols {
@@ -146,7 +147,7 @@ fn next(gol: MatGol) -> MatGol {
 
             for conv_row in 0..3 {
                 for conv_col in 0..3 {
-                    convolution += filter[conv_row][conv_col] * gol.at(
+                    convolution += filter[conv_row * 3 + conv_col] * gol.at(
                         row as i32 + conv_row as i32 - 1,
                         col as i32 + conv_col as i32 - 1
                     );
